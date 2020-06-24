@@ -1,8 +1,8 @@
 {
-    "bumpFiles": [
-        {
-            "filename": "version.txt"
-            "type": "plain-text"
-        }
-    ]
+  "bumpFiles": [
+     {
+       "filename": "version.txt",
+       "type": "plain-text"
+     }
+  ]
 }
