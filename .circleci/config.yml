@@ -1,7 +1,14 @@
 version: 2.1
 # Need to set the name of the function
 # Need to set the ssh fingerprint
-# blah
+parameters:
+  function-name:
+    type: string
+    default: "CHANGE_ME"
+  git-repo-ssh-fingerprint:
+    type: string
+    default: "CHANGE_ME"
+    
 orbs:
   aws-eks: circleci/aws-eks@0.2.6
   aws-s3: circleci/aws-s3@1.0.15
