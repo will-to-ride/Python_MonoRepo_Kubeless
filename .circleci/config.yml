@@ -272,8 +272,8 @@ jobs:
           mkdir -p ${GITOPS_PATH}
           cp -rf $HOME/gitops/${FUNCTION_NAME}.yaml ${GITOPS_PATH}/${FUNCTION_NAME}.yaml
           if [[ $(git status --porcelain) ]]; then
-            git config user.email "circleci-faas@ambyint.com"
-            git config user.name "will faas"
+            git config user.email "w.m.n.sim@gmail.com"
+            git config user.name "will-to-ride"
             git add . && git commit -am "${CIRCLE_PROJECT_REPONAME}-${CIRCLE_SHA1}"
             git pull origin master
             git push origin master
