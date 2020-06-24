@@ -2,13 +2,9 @@ version: 2.1
 # Need to set the name of the function
 # Need to set the ssh fingerprint
 orbs:
-  aws-ecr: circleci/aws-eks@0.2.6
-  node: circleci/aws-s3@1.0.15
-  # queue: eddiewebb/queue@1.1.4
-  # https://circleci.com/orbs/registry/orb/eddiewebb/queue#jobs-block_workflow
-  # https://github.com/eddiewebb/circleci-queue/blob/master/README.md
-  # https://circleci.com/orbs/registry/orb/circleci/slack
-
+  aws-eks: circleci/aws-eks@0.2.6
+  aws-s3: circleci/aws-s3@1.0.15
+  rememborb: circleci/rememborb@0.0.1
 executors:
   machine:
     machine:
@@ -28,11 +24,11 @@ commands:
     parameters:
       file:
         type: string
-    s3-bucket-name:
-      type: env_var_name
-      default: AWS_S3_FUNCTIONS_BUCKET_NAME
-    s3-prefix:
-      type: string
+      s3-bucket-name:
+        type: env_var_name
+        default: AWS_S3_FUNCTIONS_BUCKET_NAME
+      s3-prefix:
+        type: string
     steps:
       - attach-workspace:
           at: .
@@ -41,7 +37,7 @@ commands:
           to: "s3://${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<< parameters.file >>"
   zip-files:
     parameters:
-      source-path:
+      source-path:  
         type: string
         default: "src"
       function-prefix:
