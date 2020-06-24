@@ -345,7 +345,7 @@ workflows:
   publish-k8s-manifest:
     jobs:
       - generate-manifest:
-          context: will-functions
+          # context: will-functions
           namespace: "functions"
           gitops-repo-base-dir: "shared-will"
           runtime: "python3.7"
