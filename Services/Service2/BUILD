@@ -10,8 +10,8 @@ py_library(
     visibility = ["//visibility:public",],
     deps = [requirement("numpy"),
             requirement("pandas"),
-            requirement("python-dateutil"),
             requirement("pytz"),
+            requirement("python-dateutil"),
             "//Services/Service1:Service1",
     ]
 )
@@ -23,8 +23,8 @@ py_binary(
     ],
     deps = [requirement("numpy"),
             requirement("pandas"),
-            requirement("python-dateutil"),
             requirement("pytz"),
+            requirement("python-dateutil"),
             ":Service2",
            ],
     imports = [

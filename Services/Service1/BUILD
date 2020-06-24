@@ -11,6 +11,7 @@ py_library(
     deps = [requirement("numpy"),
             requirement("pandas"),
             requirement("python-dateutil"),
+            requirement("pytz"),
     ]
 )
 
