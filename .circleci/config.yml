@@ -35,6 +35,12 @@ executors:
     docker:
       - image: cimg/base:2020.01
 commands:
+  install-bazel-linux-rbe:
+    steps:
+      - run: curl -OL https://raw.githubusercontent.com/graknlabs/build-tools/master/ci/install-bazel-linux.sh
+      - run: bash ./install-bazel-linux.sh && rm ./install-bazel-linux.sh
+      - run: curl -OL https://raw.githubusercontent.com/graknlabs/build-tools/master/ci/install-bazel-rbe.sh
+      - run: bash ./install-bazel-rbe.sh && rm ./install-bazel-rbe.sh
   upload-to-s3:
     parameters:
       file:
@@ -272,9 +278,10 @@ jobs:
     executor:
       name: python
     steps:
+      - install-bazel-linux-rbe
       - attach_workspace:
           at: .
-      - run: bazel test //...
+      - run: bazel test //... --test_output=errors
   build:
     executor:
       name: python
