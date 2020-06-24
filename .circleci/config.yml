@@ -294,9 +294,7 @@ jobs:
       - checkout
       - persist_to_workspace:
           root: .
-          paths: 
-            - ./Services/<<parameters.serviceName>> 
-            .
+          paths: .
   validate-project-setup:
     executor:
       name: base
