@@ -45,7 +45,7 @@ commands:
         default: "function"
       file-extension:
         type: string
-        defauly: "py"
+        default: "py"
     steps:
       - attach_workspace:
           at: .
