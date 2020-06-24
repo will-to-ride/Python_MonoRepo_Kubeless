@@ -54,7 +54,7 @@ commands:
         type: string
     steps:
       - attach-workspace:
-          at: .
+          at: ./Services/Service1
       - aws-s3/copy:
           from: "<< parameters.file >>"
           to: "s3://${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<< parameters.file >>"
