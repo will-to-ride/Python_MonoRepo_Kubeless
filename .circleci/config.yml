@@ -342,25 +342,25 @@ workflows:
           filters:
             branches:
               only: master
-  # publish-k8s-manifest:
-  #   jobs:
-  #     - generate-manifest:
-  #         context: will-functions
-  #         namespace: "functions"
-  #         gitops-repo-base-dir: "shared-will-io"
-  #         runtime: "python3.7"
-  #         filters:
-  #           branches:
-  #             ignore: /.*/
-  #           tags:
-  #             only: /^beta-v[0-9]+(\.[0-9]+){2}$/
-  #     - generate-manifest:
-  #         context: will-functions
-  #         namespace: "functions"
-  #         gitops-repo-base-dir: "production-will-io"
-  #         runtime: "python3.7"
-  #         filters:
-  #           branches:
-  #             ignore: /.*/
-  #           tags:
-  #             only: /^v[0-9]+(\.[0-9]+){2}$/
+  publish-k8s-manifest:
+    jobs:
+      - generate-manifest:
+          context: will-functions
+          namespace: "functions"
+          gitops-repo-base-dir: "shared-will"
+          runtime: "python3.7"
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^beta-v[0-9]+(\.[0-9]+){2}$/
+      # - generate-manifest:
+      #     context: will-functions
+      #     namespace: "functions"
+      #     gitops-repo-base-dir: "production-will-io"
+      #     runtime: "python3.7"
+      #     filters:
+      #       branches:
+      #         ignore: /.*/
+      #       tags:
+      #         only: /^v[0-9]+(\.[0-9]+){2}$/
