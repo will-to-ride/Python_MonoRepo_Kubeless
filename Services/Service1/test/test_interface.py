@@ -15,7 +15,6 @@ true_array = 3
 with open('./Services/Service1/test/test_input_1.json') as f:
     service1_input = json.load(f)
 
-
 class TestService1(unittest.TestCase):
 
     def test_add(self):
