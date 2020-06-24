@@ -37,10 +37,16 @@ executors:
 commands:
   install-bazel-linux-rbe:
     steps:
-      - run: curl -OL https://raw.githubusercontent.com/graknlabs/build-tools/master/ci/install-bazel-linux.sh
-      - run: bash ./install-bazel-linux.sh && rm ./install-bazel-linux.sh
-      - run: curl -OL https://raw.githubusercontent.com/graknlabs/build-tools/master/ci/install-bazel-rbe.sh
-      - run: bash ./install-bazel-rbe.sh && rm ./install-bazel-rbe.sh
+      - run: |
+          export BAZEL_VERSION=3.0.0
+          curl -OL https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
+          chmod +x bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
+          sudo ./bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
+          rm ./bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh
+      # - run: curl -OL https://raw.githubusercontent.com/graknlabs/build-tools/master/ci/install-bazel-linux.sh
+      # - run: bash ./install-bazel-linux.sh && rm ./install-bazel-linux.sh
+      # - run: curl -OL https://raw.githubusercontent.com/graknlabs/build-tools/master/ci/install-bazel-rbe.sh
+      # - run: bash ./install-bazel-rbe.sh && rm ./install-bazel-rbe.sh
   upload-to-s3:
     parameters:
       file:
@@ -281,7 +287,7 @@ jobs:
       - install-bazel-linux-rbe
       - attach_workspace:
           at: .
-      - run: bazel test //... --test_output=errors
+      - run: bazel test //... --test_output=errors  
   build:
     executor:
       name: python
