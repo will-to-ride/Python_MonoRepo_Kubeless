@@ -274,7 +274,7 @@ jobs:
     steps:
       - attach_workspace:
           at: .
-      - run: make test
+      - run: bazel test //...
   build:
     executor:
       name: python
