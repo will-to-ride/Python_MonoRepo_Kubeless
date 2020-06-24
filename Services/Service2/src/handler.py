@@ -15,6 +15,10 @@ def execute(event, context):
         }
         print(output)
     except:
+        response = {
+            "statusCode": 400,
+            "body": "oops"
+        }
         print("Unexpected error:", sys.exc_info()[0])
 
     return json.dumps(response)

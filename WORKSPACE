@@ -19,11 +19,20 @@ load("@rules_python//python:pip.bzl", "pip_import")
 # Create a central repo that knows about the dependencies needed for
 # requirements.txt.
 pip_import(   # or pip3_import
-   name = "my_deps",
+   name = "pip_service1",
    requirements = "//Services/Service1:requirements.txt",
 )
 
 # Load the central repo's install function from its `//:requirements.bzl` file,
 # and call it.
-load("@my_deps//:requirements.bzl", "pip_install")
-pip_install()   
+load("@pip_service1//:requirements.bzl", service1_pip_install = "pip_install")
+service1_pip_install()   
+
+# Import pip dependencies of all our components.
+
+pip_import(
+    name = "pip_service2",
+    requirements = "//Services/Service2:requirements.txt",
+)
+load("@pip_service2//:requirements.bzl", service2_pip_install = "pip_install")
+service1_pip_install()

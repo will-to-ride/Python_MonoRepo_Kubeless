@@ -1,0 +1,1199 @@
+version: 2.1
+orbs:
+  aws-ecr: circleci/aws-eks@0.2.6
+  node: circleci/aws-s3@1.0.15
+  # queue: eddiewebb/queue@1.1.4
+  # https://circleci.com/orbs/registry/orb/eddiewebb/queue#jobs-block_workflow
+  # https://github.com/eddiewebb/circleci-queue/blob/master/README.md
+  # https://circleci.com/orbs/registry/orb/circleci/slack
+
+executors:
+  machine:
+    machine:
+      image: ubuntu-1604:201903-01
+  python:
+    parameters:
+      version:
+        type: string
+        default: "3.7"
+    docker:
+      - image: circleci/python:<< parameters.version >>
+  base:
+    docker:
+      - image: cimg/base:2020.01
+commands:
+  upload-to-s3:
+    parameters:
+      file: string
+    s3-bucket-name:
+      type: env_var_name
+      default: AWS_S3_FUNCTIONS_BUCKET_NAME
+    s3-prefix:
+      type: string
+    steps:
+      - attach-workspace:
+          at: .
+      - aws-s3/copy:
+          from: "<< paramters.file >>"
+          to: "s3://${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<< parameters.file >>"
+  zip-files:
+    parameters:
+      source-path:
+        type: string
+        default: "src"
+      function-prefix:
+        type: string
+        default: "function"
+      file-extension:
+        type: string
+        defauly: "py"
+    steps:
+      - attach_workspace:
+          at: .
+      - run: |
+          export VERSION=$(cat version.txt) >> $BASH_ENV
+          echo "version: $VERSION"
+          export ZIP_FILE="<< parameters.function-prefix >>-${VERSION}.zip"
+          exporter="export ZIP_FILE=${ZIP_FILE}"
+          echo $exporter >> $BASH_ENV
+          remember_file="/tmp/circleci_remember/.circleci_remember/ZIP_FILE"
+          mkdir -p $(dirname $remember_file)
+          echo $exporter >> $remember_file
+          zip -x "*test*.<< parameters.file-extension >>" -r -j $ZIP_FILE << parameters.source-path >>
+      - persist_to_workspace:
+          root: /tmp/circleci_remember
+          paths:
+            - .circleci_remember/ZIP_FILE
+      - persist_to_workspace:
+          root: .
+          paths: .      
+  generate-checksum:
+    parameters:
+      file:
+        type: string
+    steps:
+      - attach_workspace:
+          at: .
+      - rememborb/recall:
+          env_var: ZIP_FILE
+      - run: |
+          echo "export CHECKSUM=$(shasum -a 256 ${ZIP_FILE} | cut -d " " -f 1 )" >> $BASH_ENV
+          source $BASH_ENV
+  build-artifacts:
+    parameters:
+      source-path:
+        type: string
+      s3-prefix:
+        type: string
+    steps:
+      - zip-files:
+          source-path: << parameters.source-path >>
+      - rememborb/recall:
+          env_var: ZIP_FILE
+      - generate-checksum:
+          file: ${ZIP_FILE}
+      - upload-to-s3:
+          file: ${ZIP_FILE}
+          s3-prefix: << parameters.s3-prefix >>
+  generate-function-manifest:
+    parameters:
+      kubeless-version:
+        type: string
+        default: "v1.0.6"
+      function-name:
+        type: string
+      handler-name:
+        type: string
+      namespace:
+        type: string
+      requirements-file-path:
+        type: string
+      entry-script:
+        type: string
+      script-file-path:
+        type: string
+      s3-bucket-name:
+        type: env_var_name
+        default: AWS_S3_FUNCTIONS_BUCKET_NAME
+      s3-prefix:
+        type: string
+      runtime:
+        type: string
+        enum: ["python3.6", "python3.7"]
+    steps:
+      - aws-eks/update-kubeconfig-with-authenticator:
+          aws-region: ${WILL_K8S_AWS_REGION}
+          cluster-name: ${WILL_K8S_SHARED_CLUSTER_NAME}
+          install-kubectl: true
+      - run: |
+          wget https://github.com/kubeless/kubeless/releases/download/<< parameters.kubeless-version>>/kubeless_linux-amd64.zip && \
+          unzip kubeless_linux-amd64.zip && \
+          sudo mv bundles/kubeless_linux-amd64/kubeless /usr/local/bin/
+      - run: |
+          SCRIPT_URL=https://s3.amazonaws.com/${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<<parameters.script-file-path >>?raw=true
+          kubeless function deploy << parameters.function-name >> --from-file "${SCRIPT_URL}" --handler << parameters.entry-script >>.<< parameters.handler-name >> --runtime << parameters.runtime >> --dependencies << parameters.requirements-file-path >> --namespace << parameters.namespace >> --headless --dryrun --output yaml > << parameters.function-name >>.yaml
+          if [[ -s << parameters.function-name >>.yaml ]]; then
+            echo "successfully created << parameters.function-name >>.yaml"
+          else
+            echo "Unabled to create manifest"
+            exit 1
+          fi
+  inject-checksum-in-manifest:
+    parameters:
+      checksum:
+        type: string
+      manifest-file:
+        type: string
+    steps:
+      - attach_workspace:
+          at: .
+      - run: echo "checksum value << parameters.checksum >>"
+      - run: sudo apt install snapd
+      - run: sudo snap install --stable yq
+      - run: cat << parameters.manifest-file >> | /snap/bin/yq w - spec.checksum "sha256:<< parameters.checksum >>" | tee << parameters.manifest-file >>
+      - persist_to_workspace:
+          root: .
+          paths: .
+jobs:
+  tag-version:
+    executor: node
+    parameters:
+      releaseStage:
+        type: enum
+        enum: ["alpha", "beta"]
+        default: "beta"
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+      - add_ssh_keys:
+          fingerprint:
+            - "20:ef:fc:ff:71:f0:30:e7:62:75:de:da:6f:8d:31:1f"
+      - run: |
+          git config user.email "circleci-faas@ambyint.com"
+          git config user.name "ambyint faas"
+          if [ -f "CHANGELOG.md" ]; then
+            npm init -y
+            npm version $(cat version.txt) --git-tag-version false
+            npx standard-version@v7.1.0 -t "<< parameters.releaseStage >>-v" --releaseCommitMessageFormat "chore(release): [ci skip] tagged: {{currentTag}}" --git-tag-fallback false
+            rm -f package.json
+          else
+            npx standard-version -t "<< parameters.releaseStage >>-v" --releaseCommitMessageFormat "chore(release): [ci skip] tagged: {{currentTag}}" --first-release
+          fi
+          git push --follow-tags origin master
+      - persist_to_workspace:
+          root: .
+          paths: .
+  generate-manifest:
+    executor: machine
+    environment:
+      FUNCTION_NAME: "<< parameters.function-prefix >>-<< pipeline.parameters.function-name >>"
+    parameters:
+      function-prefix:
+        type: string
+        default: "function"
+      gitops-repo-base-dir:
+        type: string
+        default: "shared"
+      handler-name:
+        type: string
+        default: "execute"
+      namespace:
+        type: string
+      requirements-file-path:
+        type: string
+        default: "requirements.txt"
+      entry-script:
+        type: string
+        default: "handler"
+      source-path:
+        type: string
+        default: "src"
+      file-extension:
+        type: string
+        default: "py"
+      runtime:
+        type: enum
+        enum: ["python3.7", "python3.8"]
+    steps:
+      - checkout
+      - build-artifacts:
+          source-path: << parameters.source-path >>
+          s3-prefix: << pipeline.parameters.function-name >>
+      - rememborb/recall:
+          env_var: ZIP_FILE
+      - generate-function-manifest:
+          function-name: ${FUNCTION_NAME}
+          entry-script: << parameters.entry-script >>
+          handler-name: << parameters.handler-name >>
+          namespace: << parameters.namespace >>
+          runtime: << parameters.runtime >>
+          s3-prefix: << pipeline.parameters.function-name >>
+          script-file-path: ${ZIP_FILE}
+          requirements-file-path: << parameters.requirements-file-path >>
+      - inject-checksum-in-manifest:
+          checksum: ${CHECKSUM}
+          manifest-file: "${FUNCTION_NAME}.yaml"
+      - run: |
+          mkdir -p $HOME/gitops
+          cp ${FUNCTION_NAME}.yaml $HOME/gitops
+          cd $HOME/gitops
+          git clone https://${WILL_FAAS_GIT_USER}:"${WILL_FAAS_GIT_PASSWORD}"@github.com/will-to-ride/${WILL_GITOPS_REPO_NAME}.git
+          cd ${WILL_GITOPS_REPO_NAME}
+          GITOPS_PATH=<< parameters.gitops-repo-base-dir >>/<< parameters.namespace >>/<< pipeline.parameters.function-name >>
+          mkdir -p ${GITOPS_PATH}
+          cp -rf $HOME/gitops/${FUNCTION_NAME}.yaml ${GITOPS_PATH}/${FUNCTION_NAME}.yaml
+          if [[ $(git status --porcelain) ]]; then
+            git config user.email "circleci-faas@ambyint.com"
+            git config user.name "will faas"
+            git add . && git commit -am "${CIRCLE_PROJECT_REPONAME}-${CIRCLE_SHA1}"
+            git pull origin master
+            git push origin master
+          else
+            echo "No changes to publish"
+          fi
+  unit-tests:
+    executor:
+      name: python
+    steps:
+      - attach_workspace:
+          at: .
+      - run: make test
+  build:
+    executor:
+      name: python
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: .
+          paths: .
+  validate-project-setup:
+    executor:
+      name: base
+    steps:
+      - run: |
+          if [[ "<< pipeline.parameters.function-name >>" == "CHANGE_ME" ]]; then
+            echo "parameters.function-name must be set.  Refer to top of circleci config"
+            exit 1
+          fi
+          if [[ "<< pipeline.parameters.git-repo-ssh-fingerprint >>" == "CHANGE_ME" ]]; then
+            echo "parameters.git-repo-ssh-fingerprint must be set.  Refer to top of circleci config"
+            exit 1
+          fi
+workflows:
+  version: 2.1
+  build:
+    jobs:
+      - validate-project-setup
+      - build:
+          requires:
+            - validate-project-setup
+      - unit-tests:
+          requires:
+            - build
+      - tag-version:
+          requires:
+            - unit-tests
+          releaseStage: "beta"
+          filters:
+            branches:
+              only: master
+  publish-k8s-manifest:
+    jobs:
+      - generate-manifest:
+          context: will-functions
+          namespace: "functions"
+          gitops-repo-base-dir: "shared-will-io"
+          runtime: "python3.7"
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^beta-v[0-9]+(\.[0-9]+){2}$/
+      - generate-manifest:
+          context: will-functions
+          namespace: "functions"
+          gitops-repo-base-dir: "production-will-io"
+          runtime: "python3.7"
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+(\.[0-9]+){2}$/
+
+  bootstrap:
+    parameters:
+      scope:
+        type: string
+        default: ""
+    steps:
+      - run: ./node_modules/.bin/lerna bootstrap --concurrency=2
+      - run: |
+          scope=<< parameters.scope >>
+          if [[ -z $scope ]]; then
+            npm run build
+          else
+            npm run build -- --scope=$scope
+          fi
+  setup:
+    steps:
+      - checkout
+      - set-npmrc
+      - run: npm install --no-save
+  setup-node-on-machine:
+    parameters:
+      version:
+        type: string
+        default: "12"
+    steps:
+      - run: |
+          sudo apt-get install curl
+          sudo curl -sL https://deb.nodesource.com/setup_<< parameters.version >>.x | sudo -E bash -
+          sudo apt-get install nodejs
+  build-package:
+    parameters:
+      packageName:
+        type: string
+      namespace:
+        type: string
+    steps:
+      #      - setup-node-on-machine
+      - setup
+      - run: node -v
+      - run: ./node_modules/.bin/lerna exec --scope=<<parameters.namespace>>/<<parameters.packageName>> -- npm install --no-save
+      - run: npm run build -- --scope=<<parameters.namespace>>/<< parameters.packageName>>
+      - run: ./node_modules/.bin/lerna run --scope=<<parameters.namespace>>/<< parameters.packageName>> generate-docs
+  build:
+    steps:
+      - setup
+      - bootstrap
+  build_and_push_image_to_ecr:
+    description: "Build Docker image and push to ECR"
+    parameters:
+      path:
+        type: string
+      serviceName:
+        type: string
+      tag:
+        type: string
+    steps:
+      - aws-ecr/build-and-push-image:
+          account-url: AWS_ECR_ACCOUNT_URL
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
+          attach-workspace: true
+          checkout: false
+          create-repo: true
+          dockerfile: "<< parameters.path >>/Dockerfile"
+          path: "<< parameters.path>>"
+          region: AWS_REGION
+          repo: "<< parameters.serviceName >>"
+          tag: "<< parameters.tag >>"
+          extra-build-args: >-
+            --build-arg AMBYINT_NPM_REGISTRY_LOGIN_URL=${AMBYINT_VERDACCIO_NPM_REGISTRY_LOGIN_URL}
+            --build-arg AMBYINT_NPM_AUTH_TOKEN=${AMBYINT_VERDACCIO_NPM_READONLY_AUTH_TOKEN}
+  publish:
+    steps:
+      - run: |
+          git config user.email ambyintdev@ambyint.com
+          git config user.name ambyintdev
+
+          if [[ "$NPM_TAG" != "prod" ]]; then
+            echo "publishing pre-release"
+            npx lerna version --conventional-prerelease --preid $NPM_TAG --no-push --yes --concurrency=1
+            npx lerna publish from-package --no-git-reset --yes --concurrency=1
+            npm run afterPublish
+          else
+            echo "publishing release"
+            RELEASES=$(npx lerna version --conventional-graduate --no-push --yes --concurrency=1)
+            npx lerna publish from-package --no-git-reset --yes --concurrency=1
+            echo "export RELEASES" >> $BASH_ENV
+            source $BASH_ENV
+            npm run afterPublish
+          fi
+
+          if [ -z "$RELEASES" ]; then
+            echo "nothing to release, halting"
+            circleci-agent step halt
+          fi
+
+          echo "${RELEASES}"
+      - slack/notify:
+          include_project_field: false
+          include_job_number_field: false
+          message: >
+            [released]:\n```loren ipsum```
+          title: "GitHub Commit"
+          title_link: "https://github.com/ambyint/platform-foundation/commit/${CIRCLE_SHA1}"
+  set-npmrc:
+    steps:
+      - run: |
+          echo "@ambyint:registry=https:${AMBYINT_VERDACCIO_NPM_REGISTRY_LOGIN_URL}" > ~/.npmrc
+          echo "@ambyio:registry=https:${AMBYINT_VERDACCIO_NPM_REGISTRY_LOGIN_URL}" >> ~/.npmrc
+          echo "https:${AMBYINT_VERDACCIO_NPM_REGISTRY_LOGIN_URL}/:always-auth=true" >> ~/.npmrc
+          echo "${AMBYINT_VERDACCIO_NPM_REGISTRY_LOGIN_URL}/:_authToken=$AMBYINT_VERDACCIO_NPM_AUTH_TOKEN" >> ~/.npmrc
+          echo "access=restricted" >> ~/.npmrc
+  halt-if:
+    parameters:
+      username:
+        type: string
+      fail:
+        type: enum
+        enum: ["yes", "no"]
+        default: "no"
+    steps:
+      - run: |
+          if [[ "${CIRCLE_USERNAME}" == "<< parameters.username >>" ]]; then
+            if [[ "<< parameters.fail >>" == "yes" ]]; then
+              echo "Exiting invalid user triggered";
+              exit 1
+            else
+              echo "Halting invalid user triggered";
+              circleci step halt
+            fi
+          fi
+  continue-if:
+    parameters:
+      username:
+        type: string
+      fail:
+        type: enum
+        enum: ["yes", "no"]
+        default: "yes"
+    steps:
+      - run: |
+          if [[ "${CIRCLE_USERNAME}" != "<< parameters.username >>" ]]; then
+            if [[ "<< parameters.fail >>" == "yes" ]]; then
+              echo "Exiting invalid user triggered";
+              exit 1
+            else
+              echo "Halting invalid user triggered";
+              circleci step halt
+            fi
+          fi
+  run-unit-test-packages:
+    steps:
+      - halt-if:
+          username: ambyintdeploy
+      - build
+      - run: npm run test-packages -- --runInBand
+  run-unit-test-react:
+    steps:
+      - halt-if:
+          username: ambyintdeploy
+      - build
+      - run: npm run test-react
+  run-feature-test:
+    steps:
+      - halt-if:
+          username: ambyintdeploy
+      - run: |
+          export NVM_DIR="/opt/circleci/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+          nvm install 12
+          nvm alias default 12
+
+          echo 'export NVM_DIR="/opt/circleci/.nvm"' >> $BASH_ENV
+          echo "[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"" >> $BASH_ENV
+          source $BASH_ENV
+      - checkout
+      - set-npmrc
+      - run: npm install --no-save
+      - run: npm run bootstrap
+      - run: npm run ci-feature
+  run-lint:
+    steps:
+      - halt-if:
+          username: ambyintdeploy
+      - setup
+      - run: npm run lint
+  run-validate-db-deploy:
+    steps:
+      - halt-if:
+          username: ambyintdeploy
+      - setup
+      - run: cd packages/db-deploy-service && npm run validate
+jobs:
+  build-from-tag-old:
+    executor:
+      name: node
+    steps:
+      - continue-if:
+          username: ambyintdeploy
+          fail: "yes"
+      - build
+      - persist_to_workspace:
+          root: .
+          paths: .
+  build-from-tag:
+    parameters:
+      namespace:
+        type: string
+        default: "@ambyio"
+      packageName:
+        type: string
+    executor:
+      name: node
+    steps:
+      - continue-if:
+          username: ambyintdeploy
+          fail: "yes"
+      - build-package:
+          namespace: "<< parameters.namespace >>"
+          packageName: "<< parameters.packageName >>"
+      - persist_to_workspace:
+          root: .
+          paths: .
+  unit-node12-packages:
+    executor:
+      name: node
+      version: "12"
+    steps:
+      - run-unit-test-packages
+  unit-node12-react:
+    executor:
+      name: node
+      version: "12"
+    steps:
+      - run-unit-test-react
+  feature-node12:
+    executor: machine
+    steps:
+      - run-feature-test
+  lint:
+    executor:
+      name: node
+    steps:
+      - run-lint
+  validate-db-deploy:
+    executor:
+      name: node
+    steps:
+      - run-validate-db-deploy
+  publish-modules:
+    environment:
+      NPM_TAG: prod
+    executor:
+      name: node
+    steps:
+      - halt-if:
+          username: ambyintdeploy
+      - build
+      - publish
+  build-and-push-image:
+    description: "Parameterized job to publish ECR images"
+    parameters:
+      namespace:
+        type: string
+        default: "@ambyio"
+      packageName:
+        type: string
+      serviceName:
+        type: string
+    executor: machine
+    steps:
+      #      - continue-if:
+      #          username: ambyintdeploy
+      #          fail: "yes"
+      - run: |
+          export NVM_DIR="/opt/circleci/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+          nvm install 12
+          nvm alias default 12
+
+          echo 'export NVM_DIR="/opt/circleci/.nvm"' >> $BASH_ENV
+          echo "[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"" >> $BASH_ENV
+          source $BASH_ENV
+      - build-package:
+          namespace: "<< parameters.namespace >>"
+          packageName: "<< parameters.packageName >>"
+      - run: |
+          echo "export TAGNAME=$(echo "${CIRCLE_TAG/<< parameters.namespace >>\/<< parameters.packageName >>@/}")" >> $BASH_ENV
+          source $BASH_ENV
+
+          echo "TAGNAME=$TAGNAME"
+      - build_and_push_image_to_ecr:
+          path: "packages/<< parameters.packageName >>"
+          serviceName: "<< parameters.serviceName >>"
+          tag: "${TAGNAME}"
+  push-image:
+    description: "Parameterized job to publish ECR images"
+    environment:
+      SCOPE: "@ambyio"
+    parameters:
+      serviceName:
+        type: string
+      packageName:
+        type: string
+    executor: machine
+    steps:
+      - run: |
+          echo "export TAGNAME=$(echo "${CIRCLE_TAG/$SCOPE\/<< parameters.packageName >>@/}")" >> $BASH_ENV
+          source $BASH_ENV
+
+          echo "TAGNAME=$TAGNAME"
+      - build_and_push_image_to_ecr:
+          path: "packages/<< parameters.packageName>>"
+          serviceName: "<< parameters.serviceName>>"
+          tag: "${TAGNAME}"
+  push-lambda-functions:
+    description: "Parameterized job to push lambda"
+    parameters:
+      env:
+        type: enum
+        enum: ["dev", "qa", "prod"]
+      namespace:
+        type: string
+        default: "@ambyio"
+      packageName:
+        type: string
+    executor:
+      name: node
+    steps:
+      - setup
+      - run: |
+          cd packages/<<parameters.packageName>>
+          npm install --no-save
+
+          bash ./generate-env-file.sh << parameters.env >>
+
+          npx serverless config credentials --provider aws --key ${AWS_ACCESS_KEY_ID} --secret ${AWS_SECRET_ACCESS_KEY} --stage << parameters.env >>
+          npx serverless deploy --stage << parameters.env >>
+workflows:
+  version: 2.1
+  push-mqtt-watchtower:
+    jobs:
+      - build-and-push-image:
+          packageName: "mqtt-watchtower"
+          serviceName: "mqtt-watchtower"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/mqtt-watchtower@[0-9]+(\.[0-9]+).*/
+  push-hello-world:
+    jobs:
+      - build-and-push-image:
+          packageName: "admin-api"
+          serviceName: "admin-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /hw.*/
+  push-admin-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "admin-api"
+          serviceName: "admin-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/admin-api@[0-9]+(\.[0-9]+).*/
+  push-admin-ui:
+    jobs:
+      - build-from-tag:
+          namespace: "@ambyio"
+          packageName: "admin-ui"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/admin-ui@[0-9]+(\.[0-9]+).*/
+      - push-image:
+          packageName: "admin-ui"
+          serviceName: "admin-ui"
+          context: ambyint
+          requires:
+            - build-from-tag
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/admin-ui@[0-9]+(\.[0-9]+).*/
+  push-admin-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "admin-service"
+          serviceName: "admin-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/admin-service@[0-9]+(\.[0-9]+).*/
+  push-ai-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "ai-service"
+          serviceName: "ai-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/ai-service@[0-9]+(\.[0-9]+).*/
+  push-alarm-clock-functions:
+    jobs:
+      - push-lambda-functions:
+          env: "dev"
+          packageName: alarm-clock-functions
+          context: ambyio-lambda
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/alarm-clock-functions@[0-9]+(\.[0-9]+).*/
+      - push-lambda-functions:
+          env: "qa"
+          packageName: alarm-clock-functions
+          context: ambyio-lambda
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/qa-alarm-clock-functions@[0-9]+(\.[0-9]+).*/
+      - push-lambda-functions:
+          env: "prod"
+          packageName: alarm-clock-functions
+          context: ambyio-lambda
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/prod-alarm-clock-functions@[0-9]+(\.[0-9]+).*/
+  push-db-deploy-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "db-deploy-service"
+          serviceName: "db-deploy-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/db-deploy-service@[0-9]+(\.[0-9]+).*/
+  push-event-store-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "event-store-service"
+          serviceName: "event-store-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/event-store-service@[0-9]+(\.[0-9]+).*/
+  push-flowing-lift-system-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "flowing-lift-system-api"
+          serviceName: "flowing-lift-system-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/flowing-lift-system-api@[0-9]+(\.[0-9]+).*/
+  push-flowing-lift-system-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "flowing-lift-system-service"
+          serviceName: "flowing-lift-system-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/flowing-lift-system-service@[0-9]+(\.[0-9]+)*/
+  push-hrac-hardware-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-hardware-api"
+          serviceName: "hrac-hardware-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-hardware-api@[0-9]+(\.[0-9]+).*/
+  push-hrac-hardware-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-hardware-service"
+          serviceName: "hrac-hardware-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-hardware-service@[0-9]+(\.[0-9]+).*/
+  push-hrac-ip-network-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-ip-network-service"
+          serviceName: "hrac-ip-network-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-ip-network-service@[0-9]+(\.[0-9]+).*/
+  push-hrac-ip-multiplexer-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-ip-multiplexer-service"
+          serviceName: "hrac-ip-multiplexer-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-ip-multiplexer-service@[0-9]+(\.[0-9]+).*/
+  push-hrac-iridium-network-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-iridium-network-service"
+          serviceName: "hrac-iridium-network-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-iridium-network-service@[0-9]+(\.[0-9]+).*/
+  push-hrac-control-system-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-control-system-api"
+          serviceName: "hrac-control-system-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-control-system-api@[0-9]+(\.[0-9]+).*/
+  push-hrac-control-system-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "hrac-control-system-service"
+          serviceName: "hrac-control-system-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/hrac-control-system-service@[0-9]+(\.[0-9]+).*/
+  push-lookup-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "lookup-api"
+          serviceName: "lookup-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/lookup-api@[0-9]+(\.[0-9]+).*/
+  push-notification-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "notification-service"
+          serviceName: "notification-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/notification-service@[0-9]+(\.[0-9]+).*/
+  push-opc-alta-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "opc-alta-service"
+          serviceName: "opc-alta-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/opc-alta-service@[0-9]+(\.[0-9]+).*/
+  push-opc-bedrock-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "opc-bedrock-service"
+          serviceName: "opc-bedrock-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/opc-bedrock-service@[0-9]+(\.[0-9]+).*/
+  push-opc-range-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "opc-range-service"
+          serviceName: "opc-range-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/opc-range-service@[0-9]+(\.[0-9]+).*/
+  push-opc-swn-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "opc-swn-service"
+          serviceName: "opc-swn-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/opc-swn-service@[0-9]+(\.[0-9]+).*/
+  push-organization-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "organization-api"
+          serviceName: "organization-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/organization-api@[0-9]+(\.[0-9]+).*/
+  push-organization-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "organization-service"
+          serviceName: "organization-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/organization-service@[0-9]+(\.[0-9]+).*/
+  push-plunger-control-system-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "plunger-control-system-api"
+          serviceName: "plunger-control-system-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/plunger-control-system-api@[0-9]+(\.[0-9]+).*/
+  push-plunger-control-system-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "plunger-control-system-service"
+          serviceName: "plunger-control-system-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/plunger-control-system-service@[0-9]+(\.[0-9]+).*/
+  push-plunger-lift-system-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "plunger-lift-system-api"
+          serviceName: "plunger-lift-system-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/plunger-lift-system-api@[0-9]+(\.[0-9]+).*/
+  push-plunger-lift-system-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "plunger-lift-system-service"
+          serviceName: "plunger-lift-system-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/plunger-lift-system-service@[0-9]+(\.[0-9]+)*/
+  push-portal-ui:
+    jobs:
+      - build-from-tag:
+          namespace: "@ambyio"
+          packageName: "portal-ui"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/portal-ui@[0-9]+(\.[0-9]+).*/
+      - push-image:
+          packageName: "portal-ui"
+          serviceName: "portal-ui"
+          context: ambyint
+          requires:
+            - build-from-tag
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/portal-ui@[0-9]+(\.[0-9]+).*/
+  push-public-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "public-api"
+          serviceName: "public-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/public-api@[0-9]+(\.[0-9]+).*/
+  push-rod-lift-system-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "rod-lift-system-api"
+          serviceName: "rod-lift-system-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/rod-lift-system-api@[0-9]+(\.[0-9]+).*/
+  push-rod-lift-system-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "rod-lift-system-service"
+          serviceName: "rod-lift-system-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/rod-lift-system-service@[0-9]+(\.[0-9]+).*/
+  push-tenant-xerox-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "tenant-xerox-api"
+          serviceName: "tenant-xerox-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/tenant-xerox-api@[0-9]+(\.[0-9]+).*/
+  push-time-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "time-api"
+          serviceName: "time-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/time-api@[0-9]+(\.[0-9]+).*/
+  push-time-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "time-service"
+          serviceName: "time-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/time-service@[0-9]+(\.[0-9]+).*/
+  push-unleash-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "unleash-service"
+          serviceName: "unleash-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/unleash-service@[0-9]+(\.[0-9]+).*/
+  push-user-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "user-api"
+          serviceName: "user-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/user-api@[0-9]+(\.[0-9]+).*/
+  push-well-api:
+    jobs:
+      - build-and-push-image:
+          packageName: "well-api"
+          serviceName: "well-api"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/well-api@[0-9]+(\.[0-9]+).*/
+  push-well-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "well-service"
+          serviceName: "well-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/well-service@[0-9]+(\.[0-9]+).*/
+  push-legacy-platform-hoover-service:
+    jobs:
+      - build-and-push-image:
+          packageName: "legacy-platform-hoover-service"
+          serviceName: "legacy-platform-hoover-service"
+          context: ambyint
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^@ambyio\/legacy-platform-hoover-service@[0-9]+(\.[0-9]+).*/
+  build-ambyint-io:
+    jobs:
+      - queue/block_workflow:
+          only-on-branch: master
+          time: "10"
+      - unit-node12-packages:
+          requires:
+            - lint
+          context: ambyint
+      - unit-node12-react:
+          requires:
+            - lint
+          context: ambyint
+      - validate-db-deploy:
+          context: ambyint
+      - lint:
+          context: ambyint
+      - feature-node12:
+          requires:
+            - lint
+          context: ambyint
+      - publish-modules:
+          context: ambyint
+          requires:
+            - lint
+            - queue/block_workflow
+            - validate-db-deploy
+          filters:
+            branches:
+              only: master

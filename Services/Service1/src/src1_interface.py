@@ -1,14 +1,27 @@
 import numpy as np
 
-def add_arr(src1_input):
+def interface(src1_input):
 
-    array1 = np.asarray(src2_input['array1'])
-    array2 = np.asarray(src2_input['array2'])
+    array1 = 0
+    array2 = 0
 
-    new_array = array1 + array2
+    try:
+        array1 = src1_input['array_1']
+    except:
+        print("could not read array 1")
+
+    try:
+        array2 = src1_input['array_2']
+    except:
+        print("could not read array 2")
+
+    new_array = add_arr(array1, array2)
 
     output_dic = {
         'newArray': new_array
     }
 
     return output_dic
+
+def add_arr(num1, num2):
+    return num1 + num2
