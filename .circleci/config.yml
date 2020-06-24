@@ -26,7 +26,8 @@ executors:
 commands:
   upload-to-s3:
     parameters:
-      file: string
+      file:
+        type: string
     s3-bucket-name:
       type: env_var_name
       default: AWS_S3_FUNCTIONS_BUCKET_NAME
@@ -36,7 +37,7 @@ commands:
       - attach-workspace:
           at: .
       - aws-s3/copy:
-          from: "<< paramters.file >>"
+          from: "<< parameters.file >>"
           to: "s3://${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<< parameters.file >>"
   zip-files:
     parameters:
@@ -68,7 +69,7 @@ commands:
             - .circleci_remember/ZIP_FILE
       - persist_to_workspace:
           root: .
-          paths: .      
+          paths: .
   generate-checksum:
     parameters:
       file:
@@ -174,8 +175,8 @@ jobs:
           fingerprint:
             - "20:ef:fc:ff:71:f0:30:e7:62:75:de:da:6f:8d:31:1f"
       - run: |
-          git config user.email "circleci-faas@ambyint.com"
-          git config user.name "ambyint faas"
+          git config user.email "w.m.n.sim@gmail.com"
+          git config user.name "will-to-ride"
           if [ -f "CHANGELOG.md" ]; then
             npm init -y
             npm version $(cat version.txt) --git-tag-version false
