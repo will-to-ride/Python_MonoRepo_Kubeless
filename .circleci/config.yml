@@ -285,6 +285,9 @@ jobs:
           at: .
       - run: bazel test //... --test_output=errors  
   build:
+    parameters:
+      serviceName:
+          type: string
     executor:
       name: python
     steps:
