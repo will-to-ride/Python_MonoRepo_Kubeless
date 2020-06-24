@@ -53,7 +53,7 @@ commands:
       s3-prefix:
         type: string
     steps:
-      - attach-workspace:
+      - attach_workspace:
           at: ./Services/Service1
       - aws-s3/copy:
           from: "<< parameters.file >>"
