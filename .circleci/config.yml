@@ -310,7 +310,7 @@ workflows:
   build:
     jobs:
       - validate-project-setup
-      - build-service-1:
+      - build:
           serviceName: Service1
           requires:
             - validate-project-setup
