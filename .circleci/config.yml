@@ -294,7 +294,18 @@ jobs:
       - checkout
       - persist_to_workspace:
           root: .
-          paths: .
+          paths: .  
+  build-service-1:
+    parameters:
+      serviceName:
+          type: string
+    executor:
+      name: python
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: .
+          paths: ./Services/<< parameters.serviceName >> 
   validate-project-setup:
     executor:
       name: base
@@ -317,10 +328,10 @@ workflows:
           serviceName: Service1
           requires:
             - validate-project-setup
-      # - build-service-2:
-      #     serviceName: Service2
-      #     requires:
-      #       - validate-project-setup
+      - build-service-1:
+          serviceName: Service1
+          requires:
+            - validate-project-setup
       - unit-tests:
           requires:
             - build
