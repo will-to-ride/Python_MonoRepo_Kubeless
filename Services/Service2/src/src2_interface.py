@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.src1_interface import add_arr
+from Service1.src import add_arr
 
 def multiply_arr(src2_input):
 

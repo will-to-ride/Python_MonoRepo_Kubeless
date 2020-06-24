@@ -1,2 +1,2 @@
 # __init__.py
-from src import *
+from .src1_interface import *

@@ -1,7 +1,7 @@
 import sys
 import json
 
-from src.src1_interface import interface
+from Service1.src import interface
 
 def execute(event, context):
     

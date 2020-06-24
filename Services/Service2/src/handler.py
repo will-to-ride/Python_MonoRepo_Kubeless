@@ -1,7 +1,7 @@
 import sys
 import json
 
-from src2_interface import multiply_arr
+from Service2.src import multiply_arr
 
 def execute(event, context):
     
