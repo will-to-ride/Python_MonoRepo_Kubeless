@@ -11,6 +11,7 @@ py_library(
     deps = [requirement("numpy"),
             requirement("pandas"),
             requirement("python-dateutil"),
+            requirement("pytz"),
             "//Services/Service1:Service1",
     ]
 )
@@ -23,6 +24,7 @@ py_binary(
     deps = [requirement("numpy"),
             requirement("pandas"),
             requirement("python-dateutil"),
+            requirement("pytz"),
             ":Service2",
            ],
     imports = [
