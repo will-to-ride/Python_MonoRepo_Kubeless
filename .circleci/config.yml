@@ -7,7 +7,7 @@ parameters:
     default: "Python_MonoRepo_Kubeless"
   git-repo-ssh-fingerprint:
     type: string
-    default: "44:be:b9:62:a3:e1:a4:c6:09:c0:62:90:c5:d0:1f:ec"
+    default: "74:38:af:58:98:cb:18:85:16:d8:db:c4:e2:3e:be:23"
 
 orbs:
   aws-eks: circleci/aws-eks@0.2.6
@@ -35,7 +35,7 @@ executors:
     docker:
       - image: cimg/base:2020.01
 commands:
-  install-bazel-linux-rbe:
+  install-bazel-linux:
     steps:
       - run: |
           export BAZEL_VERSION=3.0.0
@@ -284,7 +284,7 @@ jobs:
     executor:
       name: python
     steps:
-      - install-bazel-linux-rbe
+      - install-bazel-linux
       - attach_workspace:
           at: .
       - run: bazel test //... --test_output=errors  
