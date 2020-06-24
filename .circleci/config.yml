@@ -291,7 +291,7 @@ jobs:
       - checkout
       - persist_to_workspace:
           root: .
-          paths: .
+          paths: ./Services/<<parameters.packageName>> 
   validate-project-setup:
     executor:
       name: base
@@ -310,9 +310,14 @@ workflows:
   build:
     jobs:
       - validate-project-setup
-      - build:
+      - build-service-1:
+          serviceName: Service1
           requires:
             - validate-project-setup
+      # - build-service-2:
+      #     serviceName: Service2
+      #     requires:
+      #       - validate-project-setup
       - unit-tests:
           requires:
             - build
