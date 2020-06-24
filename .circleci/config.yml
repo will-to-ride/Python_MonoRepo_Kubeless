@@ -192,7 +192,7 @@ jobs:
           command: mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
       - add_ssh_keys:
           fingerprint:
-            - "20:ef:fc:ff:71:f0:30:e7:62:75:de:da:6f:8d:31:1f"
+            - "74:38:af:58:98:cb:18:85:16:d8:db:c4:e2:3e:be:23"
       - run: |
           git config user.email "w.m.n.sim@gmail.com"
           git config user.name "will-to-ride"
@@ -352,8 +352,8 @@ workflows:
           filters:
             branches:
               ignore: /.*/
-            tags:
-              only: /^beta-v[0-9]+(\.[0-9]+){2}$/
+            # tags:
+            #   only: /^beta-v[0-9]+(\.[0-9]+){2}$/
       # - generate-manifest:
       #     context: will-functions
       #     namespace: "functions"
