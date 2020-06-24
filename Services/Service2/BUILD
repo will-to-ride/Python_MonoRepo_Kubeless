@@ -9,6 +9,7 @@ py_library(
     srcs = ["src/handler.py", "src/src2_interface.py","src/main2.py", "src/__init__.py",],
     visibility = ["//visibility:public",],
     deps = [requirement("numpy"),
+            requirement("pandas"),
             "//Services/Service1:Service1",
     ]
 )
@@ -19,6 +20,7 @@ py_binary(
       "src/main2.py",
     ],
     deps = [requirement("numpy"),
+            requirement("pandas"),
             ":Service2",
            ],
     imports = [

@@ -9,6 +9,7 @@ py_library(
     srcs = ["src/handler.py", "src/src1_interface.py", "src/__init__.py",],
     visibility = ["//visibility:public"],
     deps = [requirement("numpy"),
+            requirement("pandas"),
     ]
 )
 
