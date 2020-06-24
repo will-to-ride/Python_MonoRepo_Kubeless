@@ -10,6 +10,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [requirement("numpy"),
             requirement("pandas"),
+            requirement("python-dateutil"),
     ]
 )
 
