@@ -295,7 +295,7 @@ jobs:
       - persist_to_workspace:
           root: .
           paths: .  
-  build-service-1:
+  build-service:
     parameters:
       serviceName:
           type: string
@@ -328,11 +328,11 @@ workflows:
           serviceName: Service1
           requires:
             - validate-project-setup
-      - build-service-1:
+      - build-service:
           serviceName: Service1
           requires:
             - validate-project-setup
-      - build-service-2:
+      - build-service:
           serviceName: Service2
           requires:
             - validate-project-setup
