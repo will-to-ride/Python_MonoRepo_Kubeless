@@ -232,7 +232,7 @@ jobs:
         default: "handler"
       source-path:
         type: string
-        default: "Services/Service1/src"
+        default: "Services/Service1"
       file-extension:
         type: string
         default: "py"
