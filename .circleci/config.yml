@@ -62,7 +62,7 @@ commands:
     parameters:
       source-path:  
         type: string
-        default: "src"
+        default: "Services/Service1/src"
       function-prefix:
         type: string
         default: "function"
