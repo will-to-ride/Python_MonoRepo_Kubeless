@@ -196,14 +196,10 @@ jobs:
       - run: |
           git config user.email "w.m.n.sim@gmail.com"
           git config user.name "will-to-ride"
-          if [ -f "CHANGELOG.md" ]; then
-            npm init -y
-            npm version $(cat version.txt) --git-tag-version false
-            npx standard-version@v7.1.0 -t "<< parameters.releaseStage >>-v" --releaseCommitMessageFormat "chore(release): [ci skip] tagged: {{currentTag}}" --git-tag-fallback false
-            rm -f package.json
-          else
-            npx standard-version -t "<< parameters.releaseStage >>-v" --releaseCommitMessageFormat "chore(release): [ci skip] tagged: {{currentTag}}" --first-release
-          fi
+          npm init -y
+          npm version $(cat version.txt) --git-tag-version false
+          npx standard-version@v7.1.0 -t "<< parameters.releaseStage >>-v" --releaseCommitMessageFormat "chore(release): [ci skip] tagged: {{currentTag}}" --git-tag-fallback false
+          rm -f package.json
           git push --follow-tags origin master
       - persist_to_workspace:
           root: .
