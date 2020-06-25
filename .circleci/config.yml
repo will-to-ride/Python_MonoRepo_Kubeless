@@ -349,7 +349,7 @@ workflows:
           namespace: "functions"
           gitops-repo-base-dir: "shared-will"
           runtime: "python3.7"
-          function-name: "services"
+          # function-name: "services"
           filters:
             branches:
               ignore: /.*/
