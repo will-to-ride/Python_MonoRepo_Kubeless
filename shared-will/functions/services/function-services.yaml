@@ -8,7 +8,7 @@ metadata:
   name: function-services
   namespace: functions
 spec:
-  checksum: sha256:342e9c4bbc6add9cc166625edd91ad5e01a4b557fabf5e773ea42a9528ac3d8c
+  checksum: sha256:31dc572e923411e839920c66a6220b5b7677f80fd5bbe35ccc71be9e0e801764
   deployment:
     metadata:
       creationTimestamp: null
@@ -28,7 +28,7 @@ spec:
     python-dateutil
     pandas
     numpy
-  function: https://s3.amazonaws.com/will-kops-state-store-2/services/function-0.0.23.zip?raw=true
+  function: https://s3.amazonaws.com/will-kops-state-store-2/services/function-0.0.24.zip?raw=true
   function-content-type: url+zip
   handler: handler.execute
   horizontalPodAutoscaler:
