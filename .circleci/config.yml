@@ -4,7 +4,7 @@ version: 2.1
 parameters:
   function-name:
     type: string
-    default: "Python_MonoRepo_Kubeless"
+    default: "services"
   git-repo-ssh-fingerprint:
     type: string
     default: "74:38:af:58:98:cb:18:85:16:d8:db:c4:e2:3e:be:23"
@@ -54,7 +54,7 @@ commands:
         type: string
     steps:
       - attach_workspace:
-          at: ./Services/Service1
+          at: .
       - aws-s3/copy:
           from: "<< parameters.file >>"
           to: "s3://${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<< parameters.file >>"
@@ -226,13 +226,13 @@ jobs:
         type: string
       requirements-file-path:
         type: string
-        default: "/Services/Service1/requirements.txt"
+        default: "./Services/Service1/requirements.txt"
       entry-script:
         type: string
         default: "handler"
       source-path:
         type: string
-        default: "Services/Service1/src"
+        default: "src"
       file-extension:
         type: string
         default: "py"
@@ -349,6 +349,7 @@ workflows:
           namespace: "functions"
           gitops-repo-base-dir: "shared-will"
           runtime: "python3.7"
+          function-name: "services"
           filters:
             branches:
               ignore: /.*/
