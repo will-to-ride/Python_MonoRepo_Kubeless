@@ -71,7 +71,7 @@ commands:
         default: "py"
     steps:
       - attach_workspace:
-          at: ./Services/Service1
+          at: .
       - run: |
           export VERSION=$(cat version.txt) >> $BASH_ENV
           echo "version: $VERSION"
@@ -232,7 +232,7 @@ jobs:
         default: "handler"
       source-path:
         type: string
-        default: "Services/Service1"
+        default: "Services/Service1/src"
       file-extension:
         type: string
         default: "py"
