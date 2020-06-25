@@ -226,7 +226,7 @@ jobs:
         type: string
       requirements-file-path:
         type: string
-        default: "requirements.txt"
+        default: "/Services/Service1/requirements.txt"
       entry-script:
         type: string
         default: "handler"
