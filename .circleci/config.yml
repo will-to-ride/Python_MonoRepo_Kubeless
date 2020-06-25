@@ -153,7 +153,7 @@ commands:
           sudo mv bundles/kubeless_linux-amd64/kubeless /usr/local/bin/
       - run: |
           SCRIPT_URL=https://s3.amazonaws.com/${<< parameters.s3-bucket-name >>}/<< parameters.s3-prefix >>/<<parameters.script-file-path >>?raw=true
-          kubeless function deploy << parameters.function-name >> --from-file "${SCRIPT_URL}" --handler << parameters.entry-script >>.<< parameters.handler-name >> --runtime << parameters.runtime >> --dependencies << parameters.requirements-file-path >> --namespace << parameters.namespace >> --headless --dryrun --output yaml > << parameters.function-name >>.yaml
+          kubeless function deploy << parameters.function-name >> --from-file "${SCRIPT_URL}" --handler << parameters.entry-script >>.<< parameters.handler-name >> --runtime << parameters.runtime >> --dependencies << parameters.requirements-file-path >> --namespace << parameters.namespace >> --headless --dryrun --output yaml > << parameters.function-name >>.yaml --set rbac.create=true
           if [[ -s << parameters.function-name >>.yaml ]]; then
             echo "successfully created << parameters.function-name >>.yaml"
           else
