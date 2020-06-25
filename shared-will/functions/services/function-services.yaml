@@ -1,0 +1,59 @@
+apiVersion: kubeless.io/v1beta1
+kind: Function
+metadata:
+  creationTimestamp: null
+  labels:
+    created-by: kubeless
+    function: function-services
+  name: function-services
+  namespace: functions
+spec:
+  checksum: sha256:96b1eb6ae9d4b604e333e507a1cf5f2c1b1a5c8efabff4a93fef54f582045473
+  deployment:
+    metadata:
+      creationTimestamp: null
+    spec:
+      selector: null
+      strategy: {}
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          containers:
+            - imagePullPolicy: Always
+              name: ""
+              resources: {}
+    status: {}
+  deps: |-
+    python-dateutil
+    pandas
+    numpy
+  function: https://s3.amazonaws.com/will-kops-state-store-2/services/function-0.0.18.zip?raw=true
+  function-content-type: url+zip
+  handler: handler.execute
+  horizontalPodAutoscaler:
+    metadata:
+      creationTimestamp: null
+    spec:
+      maxReplicas: 0
+      scaleTargetRef:
+        kind: ""
+        name: ""
+    status:
+      conditions: null
+      currentMetrics: null
+      currentReplicas: 0
+      desiredReplicas: 0
+  runtime: python3.7
+  service:
+    clusterIP: None
+    ports:
+      - name: http-function-port
+        port: 8080
+        protocol: TCP
+        targetPort: 8080
+    selector:
+      created-by: kubeless
+      function: function-services
+    type: ClusterIP
+  timeout: "180"
