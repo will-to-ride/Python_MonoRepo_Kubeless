@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.29](https://github.com/will-to-ride/Python_MonoRepo_Kubeless/compare/beta-v0.0.27...beta-v0.0.29) (2020-07-02)
+
 ### [0.0.28](https://github.com/will-to-ride/Python_MonoRepo_Kubeless/compare/beta-v0.0.27...beta-v0.0.28) (2020-07-02)
 
 ### [0.0.27](https://github.com/will-to-ride/Python_MonoRepo_Kubeless/compare/beta-v0.0.26...beta-v0.0.27) (2020-06-25)
